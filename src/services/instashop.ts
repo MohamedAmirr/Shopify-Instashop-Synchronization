@@ -74,9 +74,26 @@ async function request<T>(path: string, body: unknown, retried = false): Promise
   return JSON.parse(rawText) as T
 }
 
+const RETRY_ATTEMPTS = 3
+const RETRY_DELAY_MS = 500
+
 export async function updateProducts(
   products: InstashopUpdateRequest['products'],
 ): Promise<InstashopUpdateResponse> {
   const payload: InstashopUpdateRequest = { identifier: IDENTIFIER, products }
-  return request<InstashopUpdateResponse>('/products/update', payload)
+
+  let lastError: Error | undefined
+  for (let attempt = 1; attempt <= RETRY_ATTEMPTS; attempt++) {
+    try {
+      return await request<InstashopUpdateResponse>('/products/update', payload)
+    } catch (err) {
+      lastError = err as Error
+      console.log(`[instashop] attempt ${attempt}/${RETRY_ATTEMPTS} failed: ${lastError.message}`)
+      if (attempt < RETRY_ATTEMPTS) {
+        await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt))
+      }
+    }
+  }
+
+  throw lastError
 }

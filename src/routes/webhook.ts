@@ -2,40 +2,16 @@ import type { FastifyInstance } from 'fastify'
 import { verifyShopifyWebhook } from '../services/shopify'
 import { updateProducts } from '../services/instashop'
 import type { ShopifyProductWebhookPayload, ShopifyVariant } from '../types/shopify'
-import type { InstashopProductInput, InstashopProductStatus } from '../types/instashop'
+import type { InstashopProductInput } from '../types/instashop'
+import ALLOWED_BARCODES from '../config/barcodes'
 
 const WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET ?? ''
 
-function toInstashopStatus(
-  productStatus: ShopifyProductWebhookPayload['status'],
-  inventoryQuantity: number,
-): InstashopProductStatus {
-  if (productStatus !== 'active') return 'disabled'
-  return inventoryQuantity > 0 ? 'in_stock' : 'out_of_stock'
-}
-
-function toInstashopProduct(
-  variant: ShopifyVariant,
-  productStatus: ShopifyProductWebhookPayload['status'],
-): InstashopProductInput {
-  const status = toInstashopStatus(productStatus, variant.inventory_quantity)
-
-  const product: InstashopProductInput = {
+function toInstashopProduct(variant: ShopifyVariant): InstashopProductInput {
+  return {
     barcode: variant.barcode!,
-    status,
-    externalInfo: { quantity: variant.inventory_quantity },
+    status: variant.inventory_quantity > 0 ? 'in_stock' : 'out_of_stock',
   }
-
-  // If compare_at_price exists, it's the original (crossed-out) price and
-  // variant.price is the discounted selling price.
-  if (variant.compare_at_price) {
-    product.price = variant.compare_at_price
-    product.discountPrice = variant.price
-  } else {
-    product.price = variant.price
-  }
-
-  return product
 }
 
 export async function webhookRoutes(app: FastifyInstance) {
@@ -52,29 +28,27 @@ export async function webhookRoutes(app: FastifyInstance) {
       const product = request.body
       app.log.info({ productId: product.id, title: product.title }, 'Received products/update')
 
-      const variantsWithBarcodes = product.variants.filter((v) => Boolean(v.barcode))
-      if (variantsWithBarcodes.length === 0) {
-        app.log.info({ productId: product.id }, 'No barcodes on any variant — skipping')
-        return reply.status(200).send({ synced: 0, skipped: product.variants.length })
+      const allowedVariants = product.variants.filter(
+        (v) => v.barcode && ALLOWED_BARCODES.includes(v.barcode),
+      )
+
+      if (allowedVariants.length === 0) {
+        app.log.info(
+          { productId: product.id, totalVariants: product.variants.length },
+          'No variants matched the barcode allowlist — skipping',
+        )
+        return reply.status(200).send({ synced: 0 })
       }
 
-      const instashopProducts = variantsWithBarcodes.map((v) =>
-        toInstashopProduct(v, product.status),
-      )
+      const instashopProducts = allowedVariants.map(toInstashopProduct)
 
-      app.log.info(
-        { productId: product.id, request: instashopProducts },
-        'Sending to Instashop',
-      )
+      app.log.info({ productId: product.id, request: instashopProducts }, 'Sending to Instashop')
 
       let result
       try {
         result = await updateProducts(instashopProducts)
       } catch (err) {
-        app.log.error(
-          { productId: product.id, err },
-          'Instashop API call failed',
-        )
+        app.log.error({ productId: product.id, err }, 'Instashop API call failed after all retries')
         return reply.status(200).send({ error: 'Instashop API call failed' })
       }
 
@@ -88,8 +62,6 @@ export async function webhookRoutes(app: FastifyInstance) {
             barcode: r.barcode,
             status: r.status,
             update: r.update,
-            price: r.price,
-            discountPrice: r.discountPrice,
             errorMessages: r.errorMessages,
           })),
         },
@@ -107,7 +79,6 @@ export async function webhookRoutes(app: FastifyInstance) {
         )
       }
 
-      // Always 200 to Shopify — it retries on anything else
       return reply.status(200).send({
         changes: result.changes,
         total: result.data.length,
