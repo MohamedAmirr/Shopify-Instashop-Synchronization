@@ -62,17 +62,50 @@ export async function webhookRoutes(app: FastifyInstance) {
         toInstashopProduct(v, product.status),
       )
 
-      const result = await updateProducts(instashopProducts)
+      app.log.info(
+        { productId: product.id, request: instashopProducts },
+        'Sending to Instashop',
+      )
 
-      const failed = result.data.filter((r) => !r.update && r.errorMessages.length > 0)
-      if (failed.length > 0) {
-        app.log.warn({ failed }, 'Some variants were not updated in Instashop')
+      let result
+      try {
+        result = await updateProducts(instashopProducts)
+      } catch (err) {
+        app.log.error(
+          { productId: product.id, err },
+          'Instashop API call failed',
+        )
+        return reply.status(200).send({ error: 'Instashop API call failed' })
       }
 
       app.log.info(
-        { productId: product.id, changes: result.changes, total: result.data.length },
-        'Instashop sync complete',
+        {
+          productId: product.id,
+          identifier: result.identifier,
+          changes: result.changes,
+          total: result.data.length,
+          results: result.data.map((r) => ({
+            barcode: r.barcode,
+            status: r.status,
+            update: r.update,
+            price: r.price,
+            discountPrice: r.discountPrice,
+            errorMessages: r.errorMessages,
+          })),
+        },
+        'Instashop response',
       )
+
+      const failed = result.data.filter((r) => !r.update && r.errorMessages.length > 0)
+      if (failed.length > 0) {
+        app.log.warn(
+          {
+            productId: product.id,
+            failed: failed.map((r) => ({ barcode: r.barcode, errorMessages: r.errorMessages })),
+          },
+          'Some variants were not updated in Instashop',
+        )
+      }
 
       // Always 200 to Shopify — it retries on anything else
       return reply.status(200).send({
