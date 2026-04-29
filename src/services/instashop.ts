@@ -42,6 +42,8 @@ async function getToken(): Promise<string> {
 async function request<T>(path: string, body: unknown, retried = false): Promise<T> {
   const token = await getToken()
 
+  console.log('[instashop] request', JSON.stringify({ path, body }))
+
   const response = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: {
@@ -51,18 +53,25 @@ async function request<T>(path: string, body: unknown, retried = false): Promise
     body: JSON.stringify(body),
   })
 
+  const rawText = await response.text()
+  console.log('[instashop] response', JSON.stringify({ path, status: response.status, body: rawText }))
+
   if (response.status === 401 && !retried) {
-    // Token expired — re-login once and retry
     cachedToken = null
     return request<T>(path, body, true)
   }
 
   if (!response.ok) {
-    const err = (await response.json()) as InstashopErrorResponse
-    throw new Error(`Instashop API error [${response.status}]: ${err.message ?? JSON.stringify(err)}`)
+    let err: InstashopErrorResponse
+    try {
+      err = JSON.parse(rawText) as InstashopErrorResponse
+    } catch {
+      throw new Error(`Instashop API error [${response.status}]: ${rawText}`)
+    }
+    throw new Error(`Instashop API error [${response.status}]: ${err.message ?? rawText}`)
   }
 
-  return response.json() as Promise<T>
+  return JSON.parse(rawText) as T
 }
 
 export async function updateProducts(
