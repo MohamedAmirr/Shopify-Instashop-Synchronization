@@ -7,6 +7,19 @@ import ALLOWED_BARCODES from '../config/barcodes'
 
 const WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET ?? ''
 
+const seenHmacs = new Map<string, number>()
+const DEDUP_TTL_MS = 60_000
+
+function isDuplicate(hmac: string): boolean {
+  const now = Date.now()
+  for (const [key, ts] of seenHmacs) {
+    if (now - ts > DEDUP_TTL_MS) seenHmacs.delete(key)
+  }
+  if (seenHmacs.has(hmac)) return true
+  seenHmacs.set(hmac, now)
+  return false
+}
+
 function toInstashopProduct(variant: ShopifyVariant): InstashopProductInput {
   return {
     barcode: variant.barcode!,
@@ -23,6 +36,11 @@ export async function webhookRoutes(app: FastifyInstance) {
       if (!verifyShopifyWebhook(rawBody, hmacHeader, WEBHOOK_SECRET)) {
         app.log.warn('Shopify HMAC verification failed')
         return reply.status(401).send({ error: 'Unauthorized' })
+      }
+
+      if (isDuplicate(hmacHeader!)) {
+        app.log.info('Duplicate webhook delivery — skipping')
+        return reply.status(200).send({ skipped: true })
       }
 
       const product = request.body
