@@ -68,7 +68,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         'Instashop response',
       )
 
-      const failed = result.data.filter((r) => !r.update && r.errorMessages.length > 0)
+      const failed = result.data.filter((r) => !r.update && r.errorMessages?.length > 0)
       if (failed.length > 0) {
         app.log.warn(
           {

@@ -74,8 +74,8 @@ async function request<T>(path: string, body: unknown, retried = false): Promise
   return JSON.parse(rawText) as T
 }
 
-const RETRY_ATTEMPTS = 3
-const RETRY_DELAY_MS = 500
+const RETRY_ATTEMPTS = 2
+const RETRY_DELAY_MS = 200
 
 export async function updateProducts(
   products: InstashopUpdateRequest['products'],
