@@ -7,7 +7,7 @@ import type {
   InstashopErrorResponse,
 } from '../types/instashop'
 
-const BASE_URL = 'https://stock-price-api.instashop.com/dev'
+const BASE_URL = 'https://stock-price-api.instashop.com'
 const API_KEY = process.env.INSTASHOP_API_KEY ?? ''
 const IDENTIFIER = process.env.INSTASHOP_IDENTIFIER ?? ''
 
