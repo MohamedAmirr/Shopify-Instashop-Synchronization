@@ -7,16 +7,16 @@ import ALLOWED_BARCODES from '../config/barcodes'
 
 const WEBHOOK_SECRET = process.env.SHOPIFY_WEBHOOK_SECRET ?? ''
 
-const seenHmacs = new Map<string, number>()
+const seenPayloads = new Map<string, number>()
 const DEDUP_TTL_MS = 60_000
 
-function isDuplicate(hmac: string): boolean {
+function isDuplicate(key: string): boolean {
   const now = Date.now()
-  for (const [key, ts] of seenHmacs) {
-    if (now - ts > DEDUP_TTL_MS) seenHmacs.delete(key)
+  for (const [k, ts] of seenPayloads) {
+    if (now - ts > DEDUP_TTL_MS) seenPayloads.delete(k)
   }
-  if (seenHmacs.has(hmac)) return true
-  seenHmacs.set(hmac, now)
+  if (seenPayloads.has(key)) return true
+  seenPayloads.set(key, now)
   return false
 }
 
@@ -38,11 +38,6 @@ export async function webhookRoutes(app: FastifyInstance) {
         return reply.status(401).send({ error: 'Unauthorized' })
       }
 
-      if (isDuplicate(hmacHeader!)) {
-        app.log.info('Duplicate webhook delivery — skipping')
-        return reply.status(200).send({ skipped: true })
-      }
-
       const product = request.body
       app.log.info({ productId: product.id, title: product.title }, 'Received products/update')
 
@@ -59,6 +54,12 @@ export async function webhookRoutes(app: FastifyInstance) {
       }
 
       const instashopProducts = allowedVariants.map(toInstashopProduct)
+
+      const dedupKey = `${product.id}:${JSON.stringify(instashopProducts)}`
+      if (isDuplicate(dedupKey)) {
+        app.log.info({ productId: product.id }, 'Duplicate webhook — same inventory state already processing, skipping')
+        return reply.status(200).send({ skipped: true })
+      }
 
       app.log.info({ productId: product.id, request: instashopProducts }, 'Sending to Instashop')
 
