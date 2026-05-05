@@ -70,7 +70,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         result = await updateProducts(instashopProducts)
       } catch (err) {
         app.log.error({ productId: product.id, err }, 'Instashop API call failed after all retries')
-        return reply.status(200).send({ error: 'Instashop API call failed' })
+        return reply.status(503).send({ error: 'Instashop API call failed' })
       }
 
       app.log.info(
