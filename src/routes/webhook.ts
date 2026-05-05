@@ -24,6 +24,8 @@ function toInstashopProduct(variant: ShopifyVariant): InstashopProductInput {
   return {
     barcode: variant.barcode!,
     status: variant.inventory_quantity > 0 ? 'in_stock' : 'out_of_stock',
+    price: variant.compare_at_price ?? variant.price,
+    ...(variant.compare_at_price ? { discountPrice: variant.price } : {}),
   }
 }
 
