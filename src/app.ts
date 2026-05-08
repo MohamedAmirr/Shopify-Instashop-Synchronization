@@ -2,6 +2,7 @@ import Fastify from 'fastify'
 import { webhookRoutes } from './routes/webhook'
 import { logsRoutes } from './routes/logs'
 import { dashboardRoutes } from './routes/dashboard'
+import { cleanupRoutes } from './routes/cleanup'
 import { initDb } from './services/db'
 
 export function buildApp() {
@@ -25,6 +26,7 @@ export function buildApp() {
 
   app.register(webhookRoutes)
   app.register(logsRoutes)
+  app.register(cleanupRoutes)
   app.register(dashboardRoutes)
 
   return app
