@@ -393,9 +393,12 @@ async function searchProducts() {
       const updated = d.updated || []
       const failed  = d.failed  || []
 
-      const barcodes = updated.map(u =>
-        \`<span class="barcode-chip"><span class="status-dot \${u.status}"></span>\${escHtml(u.barcode)} <span style="color:var(--muted);font-size:11px">\${u.status==='in_stock'?'In Stock':'Out of Stock'}</span></span>\`
-      ).join('')
+      const barcodes = updated.map(u => {
+        const priceStr = u.discountPrice
+          ? \`<span style="color:var(--muted);text-decoration:line-through;font-size:10px">\${u.price}</span> <span style="color:var(--green);font-size:11px">\${u.discountPrice}</span>\`
+          : \`<span style="color:var(--muted);font-size:11px">\${u.price ?? ''}</span>\`
+        return \`<span class="barcode-chip"><span class="status-dot \${u.status}"></span>\${escHtml(u.barcode)} <span style="color:var(--muted);font-size:11px">\${u.status==='in_stock'?'In Stock':'Out of Stock'}</span> \${priceStr}</span>\`
+      }).join('')
 
       const failedChips = failed.map(f =>
         \`<span class="barcode-chip" style="border-color:var(--error-bg)"><span class="status-dot out_of_stock"></span>\${escHtml(f.barcode)} <span style="color:var(--error);font-size:11px">failed</span></span>\`

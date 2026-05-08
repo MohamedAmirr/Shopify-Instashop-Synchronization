@@ -76,12 +76,30 @@ export async function webhookRoutes(app: FastifyInstance) {
       const updated = result.data.filter((r) => r.update)
       const failed  = result.data.filter((r) => !r.update && r.errorMessages?.length > 0)
 
+      // Build price lookup from what we sent to Instashop
+      const priceMap = new Map(instashopProducts.map((p) => [p.barcode, p]))
+
+      const updatedDetails = updated.map((r) => {
+        const sent = priceMap.get(r.barcode)
+        return {
+          barcode: r.barcode,
+          status: r.status,
+          price: sent?.price ?? r.price,
+          ...(sent?.discountPrice ? { discountPrice: sent.discountPrice } : {}),
+        }
+      })
+
       console.log(
         `[instashop] product="${product.title}" id=${product.id} ` +
         `changes=${result.changes} updated=${updated.length} failed=${failed.length}`,
       )
       if (updated.length > 0) {
-        console.log(`[instashop] updated: ${updated.map((r) => `${r.barcode}(${r.status})`).join(', ')}`)
+        console.log(`[instashop] updated: ${updatedDetails.map((r) => {
+          const priceStr = r.discountPrice
+            ? `price=${r.discountPrice} (was ${r.price})`
+            : `price=${r.price}`
+          return `${r.barcode}(${r.status}, ${priceStr})`
+        }).join(', ')}`)
       }
       if (failed.length > 0) {
         console.error(`[instashop] failed: ${failed.map((r) => `${r.barcode}: ${r.errorMessages?.join('; ')}`).join(', ')}`)
@@ -95,7 +113,7 @@ export async function webhookRoutes(app: FastifyInstance) {
         productTitle: product.title,
         details: {
           changes: result.changes,
-          updated: updated.map((r) => ({ barcode: r.barcode, status: r.status })),
+          updated: updatedDetails,
           ...(failed.length > 0
             ? { failed: failed.map((r) => ({ barcode: r.barcode, errors: r.errorMessages })) }
             : {}),
