@@ -61,6 +61,7 @@ export async function webhookRoutes(app: FastifyInstance) {
       try {
         result = await updateProducts(instashopProducts)
       } catch (err) {
+        console.error(`[instashop] API call failed for product=${product.id}: ${(err as Error).message}`)
         await log({
           level: 'error',
           event: 'instashop_error',
@@ -74,6 +75,17 @@ export async function webhookRoutes(app: FastifyInstance) {
 
       const updated = result.data.filter((r) => r.update)
       const failed  = result.data.filter((r) => !r.update && r.errorMessages?.length > 0)
+
+      console.log(
+        `[instashop] product="${product.title}" id=${product.id} ` +
+        `changes=${result.changes} updated=${updated.length} failed=${failed.length}`,
+      )
+      if (updated.length > 0) {
+        console.log(`[instashop] updated: ${updated.map((r) => `${r.barcode}(${r.status})`).join(', ')}`)
+      }
+      if (failed.length > 0) {
+        console.error(`[instashop] failed: ${failed.map((r) => `${r.barcode}: ${r.errorMessages?.join('; ')}`).join(', ')}`)
+      }
 
       await log({
         level: failed.length > 0 && updated.length === 0 ? 'error' : failed.length > 0 ? 'warn' : 'info',

@@ -1,8 +1,11 @@
 import { Pool } from 'pg'
 
+// Replace sslmode=require with verify-full to silence the pg deprecation warning
+const rawUrl = process.env.shopify_instashop_sync_DATABASE_URL ?? ''
+const connectionString = rawUrl.replace('sslmode=require', 'sslmode=verify-full')
+
 const pool = new Pool({
-  connectionString:
-    process.env.shopify_instashop_sync_DATABASE_URL,
+  connectionString,
   ssl: { rejectUnauthorized: false },
   max: 5,
   idleTimeoutMillis: 30_000,
