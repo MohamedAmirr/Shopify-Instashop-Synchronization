@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify'
 import { verifyShopifyWebhook } from '../services/shopify'
 import { updateProducts } from '../services/instashop'
+import { log } from '../services/logger'
 import type { ShopifyProductWebhookPayload, ShopifyVariant } from '../types/shopify'
 import type { InstashopProductInput } from '../types/instashop'
 import ALLOWED_BARCODES from '../config/barcodes'
@@ -36,22 +37,16 @@ export async function webhookRoutes(app: FastifyInstance) {
       const rawBody: Buffer = (request as any).rawBody
 
       if (!verifyShopifyWebhook(rawBody, hmacHeader, WEBHOOK_SECRET)) {
-        app.log.warn('Shopify HMAC verification failed')
         return reply.status(401).send({ error: 'Unauthorized' })
       }
 
       const product = request.body
-      app.log.info({ productId: product.id, title: product.title }, 'Received products/update')
 
       const allowedVariants = product.variants.filter(
         (v) => v.barcode && ALLOWED_BARCODES.includes(v.barcode),
       )
 
       if (allowedVariants.length === 0) {
-        app.log.info(
-          { productId: product.id, totalVariants: product.variants.length },
-          'No variants matched the barcode allowlist — skipping',
-        )
         return reply.status(200).send({ synced: 0 })
       }
 
@@ -59,46 +54,41 @@ export async function webhookRoutes(app: FastifyInstance) {
 
       const dedupKey = `${product.id}:${JSON.stringify(instashopProducts)}`
       if (isDuplicate(dedupKey)) {
-        app.log.info({ productId: product.id }, 'Duplicate webhook — same inventory state already processing, skipping')
         return reply.status(200).send({ skipped: true })
       }
-
-      app.log.info({ productId: product.id, request: instashopProducts }, 'Sending to Instashop')
 
       let result
       try {
         result = await updateProducts(instashopProducts)
       } catch (err) {
-        app.log.error({ productId: product.id, err }, 'Instashop API call failed after all retries')
+        await log({
+          level: 'error',
+          event: 'instashop_error',
+          message: 'Instashop API call failed after all retries',
+          productId: product.id,
+          productTitle: product.title,
+          details: { error: (err as Error).message },
+        })
         return reply.status(503).send({ error: 'Instashop API call failed' })
       }
 
-      app.log.info(
-        {
-          productId: product.id,
-          identifier: result.identifier,
-          changes: result.changes,
-          total: result.data.length,
-          results: result.data.map((r) => ({
-            barcode: r.barcode,
-            status: r.status,
-            update: r.update,
-            errorMessages: r.errorMessages,
-          })),
-        },
-        'Instashop response',
-      )
+      const updated = result.data.filter((r) => r.update)
+      const failed  = result.data.filter((r) => !r.update && r.errorMessages?.length > 0)
 
-      const failed = result.data.filter((r) => !r.update && r.errorMessages?.length > 0)
-      if (failed.length > 0) {
-        app.log.warn(
-          {
-            productId: product.id,
-            failed: failed.map((r) => ({ barcode: r.barcode, errorMessages: r.errorMessages })),
-          },
-          'Some variants were not updated in Instashop',
-        )
-      }
+      await log({
+        level: failed.length > 0 && updated.length === 0 ? 'error' : failed.length > 0 ? 'warn' : 'info',
+        event: 'instashop_response',
+        message: `Synced ${updated.length} variant(s) for "${product.title}"`,
+        productId: product.id,
+        productTitle: product.title,
+        details: {
+          changes: result.changes,
+          updated: updated.map((r) => ({ barcode: r.barcode, status: r.status })),
+          ...(failed.length > 0
+            ? { failed: failed.map((r) => ({ barcode: r.barcode, errors: r.errorMessages })) }
+            : {}),
+        },
+      })
 
       return reply.status(200).send({
         changes: result.changes,

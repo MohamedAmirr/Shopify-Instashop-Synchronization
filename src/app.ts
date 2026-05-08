@@ -1,5 +1,8 @@
 import Fastify from 'fastify'
 import { webhookRoutes } from './routes/webhook'
+import { logsRoutes } from './routes/logs'
+import { dashboardRoutes } from './routes/dashboard'
+import { initDb } from './services/db'
 
 export function buildApp() {
   const app = Fastify({
@@ -16,7 +19,13 @@ export function buildApp() {
     }
   })
 
+  app.addHook('onReady', async () => {
+    await initDb()
+  })
+
   app.register(webhookRoutes)
+  app.register(logsRoutes)
+  app.register(dashboardRoutes)
 
   return app
 }

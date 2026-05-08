@@ -42,8 +42,6 @@ async function getToken(): Promise<string> {
 async function request<T>(path: string, body: unknown, retried = false): Promise<T> {
   const token = await getToken()
 
-  console.log('[instashop] request', JSON.stringify({ path, body }))
-
   const response = await fetch(`${BASE_URL}${path}`, {
     method: 'POST',
     headers: {
@@ -54,7 +52,6 @@ async function request<T>(path: string, body: unknown, retried = false): Promise
   })
 
   const rawText = await response.text()
-  console.log('[instashop] response', JSON.stringify({ path, status: response.status, body: rawText }))
 
   if (response.status === 401 && !retried) {
     cachedToken = null
@@ -88,7 +85,6 @@ export async function updateProducts(
       return await request<InstashopUpdateResponse>('/products/update', payload)
     } catch (err) {
       lastError = err as Error
-      console.log(`[instashop] attempt ${attempt}/${RETRY_ATTEMPTS} failed: ${lastError.message}`)
       if (attempt < RETRY_ATTEMPTS) {
         await new Promise((resolve) => setTimeout(resolve, RETRY_DELAY_MS * attempt))
       }
