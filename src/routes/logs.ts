@@ -58,7 +58,7 @@ export async function logsRoutes(app: FastifyInstance) {
            COUNT(*) FILTER (WHERE level = 'error')    AS error_count
          FROM base
        )
-       SELECT b.*, s.total_count, s.info_count, s.warn_count, s.error_count
+       SELECT b.*, stats.total_count, stats.info_count, stats.warn_count, stats.error_count
        FROM (SELECT * FROM base ORDER BY created_at DESC LIMIT $${i} OFFSET $${i + 1}) b
        CROSS JOIN stats`,
       [...params, parseInt(limit, 10), parseInt(offset, 10)],
